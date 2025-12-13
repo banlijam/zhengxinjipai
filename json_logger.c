@@ -5,6 +5,63 @@
 #include "cJSON.h"
 #include "data_struct.h"
 
+// 简单的字符串哈希函数
+unsigned long long StringHash(const wchar_t *str)
+{
+    unsigned long long hash = 5381;
+    int c;
+    
+    while ((c = *str++))
+    {
+        hash = ((hash << 5) + hash) + c; // hash * 33 + c
+    }
+    
+    return hash;
+}
+
+// 检查JSON行是否已缓存
+BOOL IsJsonLineCached(GlobalData *data, const wchar_t *line)
+{
+    if (!data || !line || !data->jsonLineCache)
+        return FALSE;
+    
+    unsigned long long hash = StringHash(line);
+    
+    for (int i = 0; i < data->jsonLineCacheCount; i++)
+    {
+        if (data->jsonLineCache[i].hash == hash)
+        {
+            return TRUE;
+        }
+    }
+    
+    return FALSE;
+}
+
+// 添加JSON行到缓存
+void AddJsonLineToCache(GlobalData *data, const wchar_t *line)
+{
+    if (!data || !line)
+        return;
+    
+    unsigned long long hash = StringHash(line);
+    
+    // 扩展缓存数组
+    if (data->jsonLineCacheCount >= data->jsonLineCacheCapacity)
+    {
+        int newCapacity = data->jsonLineCacheCapacity == 0 ? 100 : data->jsonLineCacheCapacity * 2;
+        JsonLineCache *newCache = realloc(data->jsonLineCache, newCapacity * sizeof(JsonLineCache));
+        if (!newCache)
+            return;
+        data->jsonLineCache = newCache;
+        data->jsonLineCacheCapacity = newCapacity;
+    }
+    
+    // 添加哈希值到缓存
+    data->jsonLineCache[data->jsonLineCacheCount].hash = hash;
+    data->jsonLineCacheCount++;
+}
+
 // 添加函数声明
 void ProcessJsonOperationCards(GlobalData *data, const JsonOperation *operation);
 BOOL IsPoolInCache(GlobalData *data, const wchar_t *pool);
@@ -32,6 +89,9 @@ void InitializeJsonLogging(GlobalData *data)
     data->operations = NULL;
     data->operationCount = 0;
     data->operationCapacity = 0;
+    data->jsonLineCache = NULL;
+    data->jsonLineCacheCount = 0;
+    data->jsonLineCacheCapacity = 0;
 
     // 初始读取文件
     CheckJsonLogUpdates(data);
@@ -93,19 +153,29 @@ void ParseJsonLogFile(GlobalData *data)
         }
     }
 
-    // 清空之前的操作记录
-    FreeJsonOperations(data);
-
     // 读取后续的 JSON 行
     wchar_t lineBuffer[4096];
+    
+    // 记录已读取的行数
+    int lineCount = 0;
+    
     while (fgetws(lineBuffer, 4096, file))
     {
+        lineCount++;
+        
         // 跳过空行
         if (wcslen(lineBuffer) <= 1)
             continue;
 
         // 移除换行符
         lineBuffer[wcslen(lineBuffer) - 1] = L'\0';
+        
+        // 检查是否已缓存该JSON行
+        if (IsJsonLineCached(data, lineBuffer))
+        {
+            // 已读取过，跳过
+            continue;
+        }
 
         // 转换为 UTF-8 进行 cJSON 解析
         int utf8Len = WideCharToMultiByte(CP_UTF8, 0, lineBuffer, -1, NULL, 0, NULL, NULL);
@@ -220,6 +290,9 @@ void ParseJsonLogFile(GlobalData *data)
 
                 ProcessJsonOperationCards(data, op);
                 data->operationCount++;
+                
+                // 添加到JSON行缓存
+                AddJsonLineToCache(data, lineBuffer);
             }
 
             cJSON_Delete(json);
@@ -262,6 +335,15 @@ void ProcessNewGame(GlobalData *data, int gameId)
     }
     data->poolCacheCount = 0;
     data->poolCacheCapacity = 0;
+    
+    // 清空JSON行缓存
+    if (data->jsonLineCache)
+    {
+        free(data->jsonLineCache);
+        data->jsonLineCache = NULL;
+    }
+    data->jsonLineCacheCount = 0;
+    data->jsonLineCacheCapacity = 0;
 
     data->currentGameId = gameId;
 
@@ -274,21 +356,33 @@ void ProcessNewGame(GlobalData *data, int gameId)
 // 释放 JSON 操作记录
 void FreeJsonOperations(GlobalData *data)
 {
-    if (!data || !data->operations)
+    if (!data)
         return;
 
-    for (int i = 0; i < data->operationCount; i++)
+    if (data->operations)
     {
-        if (data->operations[i].cards)
+        for (int i = 0; i < data->operationCount; i++)
         {
-            free(data->operations[i].cards);
+            if (data->operations[i].cards)
+            {
+                free(data->operations[i].cards);
+            }
         }
-    }
 
-    free(data->operations);
-    data->operations = NULL;
-    data->operationCount = 0;
-    data->operationCapacity = 0;
+        free(data->operations);
+        data->operations = NULL;
+        data->operationCount = 0;
+        data->operationCapacity = 0;
+    }
+    
+    // 释放JSON行缓存
+    if (data->jsonLineCache)
+    {
+        free(data->jsonLineCache);
+        data->jsonLineCache = NULL;
+        data->jsonLineCacheCount = 0;
+        data->jsonLineCacheCapacity = 0;
+    }
 }
 
 // 检查卡池是否已在缓存中

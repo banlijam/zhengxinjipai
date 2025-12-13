@@ -57,6 +57,12 @@ typedef struct
     BOOL added;       // 是否已添加到当前对局
 } PoolCache;
 
+// JSON行缓存结构
+typedef struct
+{
+    unsigned long long hash; // JSON行的哈希值
+} JsonLineCache;
+
 // 当前对局卡牌数据结构
 typedef struct
 {
@@ -94,7 +100,15 @@ typedef struct
 
     BOOL poolChanged;  // 卡池是否发生变动
     int lastCardCount; // 上一次的卡牌数量
+    JsonLineCache *jsonLineCache; // JSON行缓存
+    int jsonLineCacheCount;       // 缓存数量
+    int jsonLineCacheCapacity;    // 缓存容量
 } GlobalData;
+
+// 简单的字符串哈希函数
+unsigned long long StringHash(const wchar_t *str);
+BOOL IsJsonLineCached(GlobalData *data, const wchar_t *line);
+void AddJsonLineToCache(GlobalData *data, const wchar_t *line);
 
 // 全局变量声明
 extern GlobalData g_GlobalData;
