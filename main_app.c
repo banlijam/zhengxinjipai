@@ -62,14 +62,11 @@ void CalculateWindowSize(int cardCount, int *columns, int *width, int *height)
         *height = 180; // 最小高度
 }
 
-// 检查卡牌是否为空（数量为0）
 BOOL IsCardEmpty(const Card *card)
 {
     if (!card)
         return TRUE;
-    if (wcscmp(card->count, L"0") == 0)
-        return TRUE;
-    if (wcslen(card->count) == 0)
+    if (wcslen(card->name) == 0)
         return TRUE;
     return FALSE;
 }
@@ -300,39 +297,51 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     case WM_TIMER:
         if (wParam == TIMER_ID_JSON)
         {
-            CheckJsonLogUpdates(&g_GlobalData);
+            // 检查日志更新，只有当数据真正变化时才更新界面
+            BOOL dataChanged = CheckJsonLogUpdates(&g_GlobalData);
 
-            // 每次检查更新后都重绘窗口
-            InvalidateRect(hwnd, NULL, TRUE);
+            // 检查对局ID是否变化
+            static int lastGameId = 0;
+            BOOL gameIdChanged = (g_GlobalData.currentGameId != lastGameId);
 
-            // 更新窗口标题显示对局ID和应用名称
-            wchar_t title[256];
-            swprintf(title, 256, L"正新记牌 - 对局ID: %d", g_GlobalData.currentGameId);
-            SetWindowTextW(hwnd, title);
-
-            // 只在卡池变动或卡牌数量变化时调整窗口大小
+            // 检查卡池或卡牌数量是否变化
             BOOL shouldResize = g_GlobalData.poolChanged ||
                                 (g_GlobalData.currentGame.cardCount != g_GlobalData.lastCardCount);
 
-            if (shouldResize)
+            // 只有在数据变化或需要调整窗口大小时才重绘
+            if (dataChanged || shouldResize || gameIdChanged)
             {
-                // 根据卡牌数量调整窗口大小
-                int columns, newWidth, newHeight;
-                CalculateWindowSize(g_GlobalData.currentGame.cardCount, &columns, &newWidth, &newHeight);
+                // 更新窗口标题显示对局ID和应用名称
+                wchar_t title[256];
+                swprintf(title, 256, L"正新记牌 - 对局ID: %d", g_GlobalData.currentGameId);
+                SetWindowTextW(hwnd, title);
 
-                // 获取当前窗口位置
-                RECT windowRect;
-                GetWindowRect(hwnd, &windowRect);
-                int currentX = windowRect.left;
-                int currentY = windowRect.top;
+                if (shouldResize)
+                {
+                    // 根据卡牌数量调整窗口大小
+                    int columns, newWidth, newHeight;
+                    CalculateWindowSize(g_GlobalData.currentGame.cardCount, &columns, &newWidth, &newHeight);
 
-                // 调整窗口大小（保持位置不变）
-                SetWindowPos(hwnd, NULL, currentX, currentY, newWidth, newHeight, SWP_NOZORDER);
+                    // 获取当前窗口位置
+                    RECT windowRect;
+                    GetWindowRect(hwnd, &windowRect);
+                    int currentX = windowRect.left;
+                    int currentY = windowRect.top;
 
-                // 重置变动标记和记录当前卡牌数量
-                g_GlobalData.poolChanged = FALSE;
-                g_GlobalData.lastCardCount = g_GlobalData.currentGame.cardCount;
+                    // 调整窗口大小（保持位置不变）
+                    SetWindowPos(hwnd, NULL, currentX, currentY, newWidth, newHeight, SWP_NOZORDER);
+
+                    // 重置变动标记和记录当前卡牌数量
+                    g_GlobalData.poolChanged = FALSE;
+                    g_GlobalData.lastCardCount = g_GlobalData.currentGame.cardCount;
+                }
+
+                // 只在数据真正变化时才重绘窗口
+                InvalidateRect(hwnd, NULL, FALSE);
             }
+
+            // 更新最后对局ID
+            lastGameId = g_GlobalData.currentGameId;
         }
         return 0;
 
@@ -357,6 +366,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     memset(&g_GlobalData, 0, sizeof(GlobalData));
     g_GlobalData.poolChanged = FALSE;
     g_GlobalData.lastCardCount = 0;
+    g_GlobalData.lastOperationCount = 0;
 
     // 在启动时加载数据
     if (!LoadEmbeddedData(&g_GlobalData))

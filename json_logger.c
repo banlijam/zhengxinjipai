@@ -97,11 +97,11 @@ void InitializeJsonLogging(GlobalData *data)
     CheckJsonLogUpdates(data);
 }
 
-// 检查 JSON 日志更新
-void CheckJsonLogUpdates(GlobalData *data)
+// 检查 JSON 日志更新，返回是否有数据变化
+BOOL CheckJsonLogUpdates(GlobalData *data)
 {
     if (!data)
-        return;
+        return FALSE;
 
     FILE *file = _wfopen(data->logFilePath, L"r, ccs=UTF-8");
     if (!file)
@@ -110,13 +110,16 @@ void CheckJsonLogUpdates(GlobalData *data)
         data->currentFileSize = 0;
         data->currentGameId = 0;
         FreeJsonOperations(data);
-        return;
+        return FALSE;
     }
 
     // 获取文件大小
     fseek(file, 0, SEEK_END);
     long fileSize = ftell(file);
     fseek(file, 0, SEEK_SET);
+
+    // 记录变化前的操作数量
+    int oldOperationCount = data->operationCount;
 
     // 如果文件大小变化，重新解析
     if (fileSize != data->currentFileSize)
@@ -126,6 +129,9 @@ void CheckJsonLogUpdates(GlobalData *data)
     }
 
     fclose(file);
+
+    // 返回是否有新的操作记录
+    return (data->operationCount != oldOperationCount);
 }
 
 // 解析 JSON 日志文件
@@ -611,13 +617,13 @@ void ProcessJsonOperationCards(GlobalData *data, const JsonOperation *operation)
         }
         break;
 
-    case 1: // operation 1: srcCard 数量减2, dstCard 数量减1
+    case 1: // operation 1: srcCard 数量减3, dstCard 数量减1
         if (operation->srcCard.name[0] != L'\0')
         {
             NameToPool *srcMapping = FindNameToPool(operation->srcCard.name);
             if (srcMapping)
             {
-                AdjustCardCount(data, srcMapping->pool, operation->srcCard.name, operation->srcCard.level, -2);
+                AdjustCardCount(data, srcMapping->pool, operation->srcCard.name, operation->srcCard.level, -3);
             }
         }
         if (operation->dstCard.name[0] != L'\0')

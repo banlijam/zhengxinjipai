@@ -100,6 +100,7 @@ typedef struct
 
     BOOL poolChanged;  // 卡池是否发生变动
     int lastCardCount; // 上一次的卡牌数量
+    int lastOperationCount; // 上一次的操作记录数量
     JsonLineCache *jsonLineCache; // JSON行缓存
     int jsonLineCacheCount;       // 缓存数量
     int jsonLineCacheCapacity;    // 缓存容量
@@ -121,7 +122,7 @@ void FreeGlobalData(GlobalData *data);
 
 // JSON 日志处理函数
 void InitializeJsonLogging(GlobalData *data);
-void CheckJsonLogUpdates(GlobalData *data);
+BOOL CheckJsonLogUpdates(GlobalData *data);
 void ParseJsonLogFile(GlobalData *data);
 void FreeJsonOperations(GlobalData *data);
 void ProcessNewGame(GlobalData *data, int gameId);
